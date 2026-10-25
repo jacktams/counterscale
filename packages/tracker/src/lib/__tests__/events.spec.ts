@@ -209,6 +209,22 @@ describe("autoTrackEvents", () => {
         });
     });
 
+    test("default image label ignores srcset and Cloudflare resizing options", () => {
+        document.body.innerHTML = `<img id="img"
+            src="https://cdn.example.com/cdn-cgi/image/width=1280,format=auto/trips/iceland/sunset.jpg"
+            srcset="https://cdn.example.com/cdn-cgi/image/width=640,format=auto/trips/iceland/sunset.jpg 640w"
+            data-counterscale-view="image_view">`;
+        cleanup = autoTrackEvents(track);
+
+        ioCallback([
+            { target: document.getElementById("img")!, isIntersecting: true },
+        ]);
+
+        expect(track).toHaveBeenCalledWith(
+            expect.objectContaining({ label: "/trips/iceland/sunset.jpg" }),
+        );
+    });
+
     test("ignores elements that are not intersecting", () => {
         document.body.innerHTML = `<div id="d" data-counterscale-view="seen" data-counterscale-label="x"></div>`;
         cleanup = autoTrackEvents(track);

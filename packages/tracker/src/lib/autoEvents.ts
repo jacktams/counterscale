@@ -7,7 +7,7 @@ import type { TrackEventOpts } from "../shared/types";
 //
 // - data-counterscale-event: tracks a click with the given event name
 // - data-counterscale-view: tracks the element scrolling into view (once per element per page load)
-// - data-counterscale-label: item identifier (defaults to an image's src path)
+// - data-counterscale-label: item identifier (defaults to an image's src path, see getLabel)
 // - data-counterscale-category: optional event category
 
 const CLICK_ATTR = "data-counterscale-event";
@@ -17,17 +17,26 @@ const CATEGORY_ATTR = "data-counterscale-category";
 
 const VIEW_THRESHOLD = 0.5;
 
+// Cloudflare Image Resizing URLs: /cdn-cgi/image/<options>/<source path>
+const CF_IMAGE_RESIZING_PREFIX = /^\/cdn-cgi\/image\/[^/]+(?=\/)/;
+
 function getLabel(el: Element): string | undefined {
     const label = el.getAttribute(LABEL_ATTR);
     if (label) {
         return label;
     }
 
+    // NOTE: uses the authored src (not currentSrc, which varies with the srcset
+    //       candidate picked for the viewport) and strips resizing options, so the
+    //       same image is always counted under one label
     if (el instanceof HTMLImageElement) {
-        const src = el.currentSrc || el.src;
+        const src = el.getAttribute("src");
         if (src) {
             try {
-                return new URL(src, document.baseURI).pathname;
+                return new URL(src, document.baseURI).pathname.replace(
+                    CF_IMAGE_RESIZING_PREFIX,
+                    "",
+                );
             } catch {
                 return undefined;
             }
