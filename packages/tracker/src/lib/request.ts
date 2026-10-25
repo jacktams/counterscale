@@ -55,6 +55,29 @@ export function checkCacheStatus(
 }
 
 /**
+ * Makes a fire-and-forget event request. Uses fetch with keepalive so the
+ * request survives page navigation (e.g. outbound link clicks); falls back
+ * to XHR where fetch is unavailable.
+ */
+export function makeEventRequest(url: string, params: CollectRequestParams) {
+    const fullUrl = buildCollectUrl(url, params, true);
+
+    if (typeof fetch === "function") {
+        fetch(fullUrl, {
+            method: "GET",
+            keepalive: true,
+            mode: "no-cors",
+            credentials: "omit",
+        }).catch(() => {
+            // tracking is best-effort
+        });
+        return;
+    }
+
+    makeRequest(url, params);
+}
+
+/**
  * Makes a request to the collect endpoint
  * @param url The collect endpoint URL
  * @param params The parameters to send

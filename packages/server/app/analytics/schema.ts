@@ -30,6 +30,14 @@ export const ColumnMappings = {
     utmTerm: "blob14",
     utmContent: "blob15",
 
+    // custom events: rows with an empty eventName are pageviews
+    eventName: "blob16",
+    eventCategory: "blob17",
+    // groupable identifier for the thing interacted with (e.g. image id, slug)
+    eventLabel: "blob18",
+    // JSON string of arbitrary event data (stored, not queried)
+    eventData: "blob19",
+
     /**
      * doubles
      */
@@ -43,3 +51,13 @@ export const ColumnMappings = {
     // this record is the bounce value
     bounce: "double3",
 } as const;
+
+/**
+ * Column mappings that only apply to custom event rows; excluded from pageview rollups.
+ */
+export const EventColumns = [
+    "eventName",
+    "eventCategory",
+    "eventLabel",
+    "eventData",
+] as const satisfies (keyof typeof ColumnMappings)[];

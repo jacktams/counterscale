@@ -484,6 +484,144 @@ describe("AnalyticsEngineAPI", () => {
         });
     });
 
+    describe("custom events", () => {
+        function lastQueryBody(): string {
+            return fetch.mock.calls[fetch.mock.calls.length - 1][1].body;
+        }
+
+        test.each([
+            [
+                "getViewsGroupedByInterval",
+                () =>
+                    api.getViewsGroupedByInterval(
+                        "example.com",
+                        "DAY",
+                        new Date("2024-01-15T00:00:00Z"),
+                        new Date("2024-01-16T00:00:00Z"),
+                        "UTC",
+                    ),
+            ],
+            ["getCounts", () => api.getCounts("example.com", "7d", "UTC")],
+            [
+                "getVisitorCountByColumn",
+                () =>
+                    api.getVisitorCountByColumn(
+                        "example.com",
+                        "country",
+                        "7d",
+                        "UTC",
+                    ),
+            ],
+            [
+                "getAllCountsByColumn",
+                () => api.getAllCountsByColumn("example.com", "path", "7d"),
+            ],
+            [
+                "getAllCountsByAllColumnsForAllSites",
+                () =>
+                    api.getAllCountsByAllColumnsForAllSites(
+                        ["path"],
+                        new Date("2024-01-15T00:00:00Z"),
+                        new Date("2024-01-16T00:00:00Z"),
+                    ),
+            ],
+            ["getSitesOrderedByHits", () => api.getSitesOrderedByHits("7d")],
+            ["getEarliestEvents", () => api.getEarliestEvents("example.com")],
+        ])("%s excludes custom event rows", async (_name, run) => {
+            fetch.mockResolvedValue(createFetchResponse({ data: [] }));
+
+            await run();
+
+            expect(fetch).toHaveBeenCalled();
+            for (const call of fetch.mock.calls) {
+                expect(call[1].body).toContain("AND blob16 = ''");
+            }
+        });
+
+        test("getEventCountsByColumn counts events grouped by name", async () => {
+            fetch.mockResolvedValue(
+                createFetchResponse({
+                    data: [
+                        { blob16: "image_view", count: 12 },
+                        { blob16: "outbound_click", count: 3 },
+                    ],
+                }),
+            );
+
+            const result = await api.getEventCountsByColumn(
+                "example.com",
+                "eventName",
+                "7d",
+                "UTC",
+            );
+
+            expect(result).toEqual([
+                ["image_view", 12],
+                ["outbound_click", 3],
+            ]);
+            const body = lastQueryBody();
+            expect(body).toContain("SELECT blob16, SUM(_sample_interval)");
+            expect(body).toContain("AND blob16 != ''");
+            expect(body).toContain("GROUP BY blob16");
+        });
+
+        test("getEventCountsByColumn drills into labels for one event", async () => {
+            fetch.mockResolvedValue(
+                createFetchResponse({
+                    data: [
+                        { blob18: "/photos/a.jpg", count: 9 },
+                        { blob18: "/photos/b.jpg", count: 4 },
+                    ],
+                }),
+            );
+
+            const result = await api.getEventCountsByColumn(
+                "example.com",
+                "eventLabel",
+                "7d",
+                "UTC",
+                { path: "/gallery" },
+                "image_view",
+            );
+
+            expect(result).toEqual([
+                ["/photos/a.jpg", 9],
+                ["/photos/b.jpg", 4],
+            ]);
+            const body = lastQueryBody();
+            expect(body).toContain("GROUP BY blob18");
+            expect(body).toContain("AND blob16 = 'image_view'");
+            expect(body).toContain("AND blob3 = '/gallery'");
+        });
+
+        test("getEventCountsByColumn paginates", async () => {
+            fetch.mockResolvedValue(
+                createFetchResponse({
+                    data: Array.from({ length: 12 }, (_, i) => ({
+                        blob16: `event_${i}`,
+                        count: 100 - i,
+                    })),
+                }),
+            );
+
+            const result = await api.getEventCountsByColumn(
+                "example.com",
+                "eventName",
+                "7d",
+                "UTC",
+                {},
+                undefined,
+                2,
+            );
+
+            expect(result).toEqual([
+                ["event_10", 90],
+                ["event_11", 89],
+            ]);
+            expect(lastQueryBody()).toContain("LIMIT 20");
+        });
+    });
+
     describe("UTM query methods", () => {
         test("getCountByUtmSource should return visitor counts by UTM source", async () => {
             fetch.mockResolvedValue(

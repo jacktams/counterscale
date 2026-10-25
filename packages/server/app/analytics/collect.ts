@@ -125,6 +125,52 @@ function extractParamsFromQueryString(requestUrl: string): {
     return params;
 }
 
+type EventFields = Pick<
+    DataPoint,
+    "eventName" | "eventCategory" | "eventLabel" | "eventData"
+>;
+
+// NOTE: event values are later interpolated into (unparameterized) Analytics Engine
+//       SQL queries, so names are restricted to a safe charset and labels may not
+//       contain quotes, backslashes or control characters.
+export const EVENT_NAME_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
+// eslint-disable-next-line no-control-regex
+const EVENT_LABEL_PATTERN = /^[^'"\\\x00-\x1f]{1,256}$/;
+const MAX_EVENT_DATA_LENGTH = 1024;
+
+export function parseEventParams(params: {
+    [key: string]: string;
+}): EventFields | { error: string } {
+    const { en, ec, el, ed } = params;
+
+    if (!EVENT_NAME_PATTERN.test(en)) {
+        return { error: "Invalid event name" };
+    }
+    if (ec && !EVENT_NAME_PATTERN.test(ec)) {
+        return { error: "Invalid event category" };
+    }
+    if (el && !EVENT_LABEL_PATTERN.test(el)) {
+        return { error: "Invalid event label" };
+    }
+    if (ed) {
+        if (ed.length > MAX_EVENT_DATA_LENGTH) {
+            return { error: "Event data too large" };
+        }
+        try {
+            JSON.parse(ed);
+        } catch {
+            return { error: "Invalid event data" };
+        }
+    }
+
+    return {
+        eventName: en,
+        eventCategory: ec,
+        eventLabel: el,
+        eventData: ed,
+    };
+}
+
 function getDeviceTypeFromDevice(device: IDevice): string {
     // see: https://github.com/faisalman/ua-parser-js/issues/182
     return device.type === undefined ? "desktop" : device.type;
@@ -146,6 +192,18 @@ export function collectRequestHandler(
 
     const parsedUserAgent = new UAParser(userAgent);
 
+    // Custom events are recorded separately from pageviews: they never count as a
+    // visit or (anti-)bounce, and must not advance the cookieless hit counter
+    const isEvent = params.en !== undefined;
+    let event: EventFields = {};
+    if (isEvent) {
+        const result = parseEventParams(params);
+        if ("error" in result) {
+            return new Response(result.error, { status: 400 });
+        }
+        event = result;
+    }
+
     // Check if hit type parameter is provided in the request
     // If it is, use it to derive visit and bounce values; otherwise, calculate them using the If-Modified-Since header
     let isVisit = false;
@@ -154,7 +212,10 @@ export function collectRequestHandler(
     let hits = 0;
 
     // Get hit count from params or cache headers
-    if (params.ht !== undefined) {
+    if (isEvent) {
+        hits = 0;
+        nextLastModifiedDate = undefined;
+    } else if (params.ht !== undefined) {
         // From params
         hits = parseInt(params.ht, 10);
         if (isNaN(hits) || hits <= 0) hits = 1;
@@ -173,7 +234,7 @@ export function collectRequestHandler(
     isVisit = hits === 1; // if first hit, it is a visit
 
     // Get bounce value based on hit count
-    bounceValue = getBounceValue(hits);
+    bounceValue = isEvent ? 0 : getBounceValue(hits);
 
     const browserVersion = maskBrowserVersion(
         parsedUserAgent.getBrowser().version,
@@ -199,6 +260,8 @@ export function collectRequestHandler(
         utmCampaign: params.uc,
         utmTerm: params.ut,
         utmContent: params.uco,
+        // custom event fields (empty for pageviews)
+        ...event,
     };
 
     // NOTE: location is derived from Cloudflare-specific request properties
@@ -258,6 +321,10 @@ interface DataPoint {
     utmCampaign?: string;
     utmTerm?: string;
     utmContent?: string;
+    eventName?: string;
+    eventCategory?: string;
+    eventLabel?: string;
+    eventData?: string;
 
     // doubles
     newVisitor: number;
@@ -290,6 +357,10 @@ export function writeDataPoint(
             data.utmCampaign || "", // blob13
             data.utmTerm || "", // blob14
             data.utmContent || "", // blob15
+            data.eventName || "", // blob16
+            data.eventCategory || "", // blob17
+            data.eventLabel || "", // blob18
+            data.eventData || "", // blob19
         ],
         doubles: [data.newVisitor || 0, data.newSession || 0, data.bounce],
     };

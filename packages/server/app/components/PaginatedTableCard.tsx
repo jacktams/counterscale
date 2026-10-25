@@ -15,6 +15,7 @@ interface PaginatedTableCardProps {
     onClick?: (key: string) => void;
     timezone?: string;
     labelFormatter?: (label: string) => string;
+    extraParams?: Record<string, string>;
 }
 
 const PaginatedTableCard = ({
@@ -27,6 +28,7 @@ const PaginatedTableCard = ({
     onClick,
     timezone,
     labelFormatter,
+    extraParams,
 }: PaginatedTableCardProps) => {
     const countsByProperty = dataFetcher.data?.countsByProperty || [];
     const [page, setPage] = useState(1);
@@ -37,6 +39,7 @@ const PaginatedTableCard = ({
             interval,
             timezone,
             ...filters,
+            ...extraParams,
             page,
         };
 
@@ -46,7 +49,7 @@ const PaginatedTableCard = ({
         });
         // NOTE: dataFetcher is intentionally omitted from the useEffect dependency array
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [loaderUrl, siteId, interval, filters, timezone, page]); //
+    }, [loaderUrl, siteId, interval, filters, timezone, page, extraParams]); //
 
     function handlePagination(page: number) {
         setPage(page);

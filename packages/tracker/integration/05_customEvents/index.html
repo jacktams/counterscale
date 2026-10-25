@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+    <head>
+        <title>05 Custom Events</title>
+    </head>
+    <body>
+        <h1>Custom Events Test</h1>
+
+        <a
+            id="outbound"
+            href="#clicked"
+            data-counterscale-event="outbound_click"
+            data-counterscale-label="github"
+            >GitHub</a
+        >
+
+        <div style="height: 3000px"></div>
+
+        <img
+            id="photo"
+            width="200"
+            height="200"
+            src="/05_customEvents/sunset.jpg"
+            data-counterscale-view="image_view"
+            data-counterscale-category="gallery"
+        />
+
+        <script>
+            // queued before the (deferred) tracker loads
+            window.counterscale = window.counterscale || { q: [] };
+            window.counterscale.q.push([
+                "trackEvent",
+                { name: "queued_event", label: "early" },
+            ]);
+        </script>
+        <script
+            id="counterscale-script"
+            data-site-id="events-test-site-id"
+            data-report-localhost
+            src="http://localhost:3004/tracker.js"
+            defer
+        ></script>
+    </body>
+</html>

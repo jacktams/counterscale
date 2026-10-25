@@ -7,6 +7,20 @@ export type CollectRequestParams = {
     [key: string]: string | undefined; // Allow additional string properties
 } & UtmParams;
 
+export type EventParams = {
+    en: string; // event name
+    ec?: string; // event category
+    el?: string; // event label (groupable item identifier)
+    ed?: string; // event data (JSON string)
+};
+
+export type TrackEventOpts = {
+    name: string;
+    category?: string;
+    label?: string;
+    data?: Record<string, unknown>;
+};
+
 export type UtmParams = {
     us?: string; // utm_source
     um?: string; // utm_medium

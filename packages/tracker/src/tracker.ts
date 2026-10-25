@@ -25,7 +25,10 @@ function getLegacySiteId(): string | undefined {
     type Command = [CommandName, ...CommandArgs];
 
     let siteId = undefined;
-    const queue = (window.counterscale && window.counterscale.q) || [];
+    const queue = window.counterscale && window.counterscale.q;
+    if (!Array.isArray(queue)) {
+        return undefined;
+    }
     queue.forEach(function (cmd: Command) {
         // only interested in grabbing siteId
         if (cmd[0] === "set" && cmd[1] === "siteId") {
@@ -52,7 +55,52 @@ function init() {
         reportOnLocalhost,
         reporterUrl,
         autoTrackPageviews: true,
+        autoTrackEvents: true,
     });
+
+    exposeGlobalApi();
+}
+
+/**
+ * Exposes the tracker API on window.counterscale, and replays any commands that
+ * were queued before this (deferred) script loaded, e.g.:
+ *
+ *   window.counterscale = window.counterscale || { q: [] };
+ *   window.counterscale.q.push(["trackEvent", { name: "signup" }]);
+ */
+function exposeGlobalApi() {
+    type Command = [string, ...unknown[]];
+
+    const runCommand = (cmd: Command) => {
+        if (!Array.isArray(cmd)) return;
+        if (cmd[0] === "trackEvent") {
+            Counterscale.trackEvent(
+                cmd[1] as Parameters<typeof Counterscale.trackEvent>[0],
+            );
+        }
+        // "set" and "trackPageview" are handled at init (pageviews are auto-tracked)
+    };
+
+    const pending = window.counterscale && window.counterscale.q;
+    const queue: Command[] = Array.isArray(pending) ? pending : [];
+
+    window.counterscale = {
+        q: {
+            push: (...cmds: Command[]) => {
+                cmds.forEach(runCommand);
+                return 0;
+            },
+        },
+        init: Counterscale.init,
+        trackPageview: (opts) => {
+            Counterscale.trackPageview(opts);
+            return Promise.resolve();
+        },
+        trackEvent: Counterscale.trackEvent,
+        cleanup: Counterscale.cleanup,
+    };
+
+    queue.forEach(runCommand);
 }
 
 (function () {

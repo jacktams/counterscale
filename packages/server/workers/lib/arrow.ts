@@ -1,5 +1,5 @@
 import { AnalyticsEngineAPI } from "../../app/analytics/query";
-import { ColumnMappings } from "../../app/analytics/schema";
+import { ColumnMappings, EventColumns } from "../../app/analytics/schema";
 import {
     type Data,
     Float64,
@@ -131,8 +131,13 @@ export async function extractAsArrow(
     const endDateTime = yesterday.endOf("day").toDate();
 
     // Get all columns we want to extract
+    // (custom event columns are excluded; the rollup only covers pageviews)
     const columns = Object.keys(ColumnMappings).filter(
-        (key) => key !== "siteId" && key !== "newVisitor" && key !== "bounce",
+        (key) =>
+            key !== "siteId" &&
+            key !== "newVisitor" &&
+            key !== "bounce" &&
+            !(EventColumns as readonly string[]).includes(key),
     ) as (keyof typeof ColumnMappings)[];
 
     // Fetch data for yesterday

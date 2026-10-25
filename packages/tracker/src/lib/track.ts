@@ -1,13 +1,17 @@
 import type { Client } from "./client";
 import { instrumentHistoryBuiltIns } from "./instrument";
-import { makeRequest, checkCacheStatus } from "./request";
+import { makeRequest, makeEventRequest, checkCacheStatus } from "./request";
 import {
     getHostnameAndPath,
     getReferrer,
     extractUtmParams,
     isLocalhostAddress,
 } from "../shared/utils";
-import { buildCollectRequestParams } from "../shared/request";
+import {
+    buildCollectRequestParams,
+    buildEventRequestParams,
+} from "../shared/request";
+import type { TrackEventOpts } from "../shared/types";
 
 export type TrackPageviewOpts = {
     url?: string;
@@ -119,4 +123,36 @@ export async function trackPageview(
     );
 
     makeRequest(client.reporterUrl, requestParams);
+}
+
+export function trackEvent(client: Client, opts: TrackEventOpts) {
+    if (!opts || !opts.name) {
+        throw new Error("Counterscale.trackEvent() requires an event name.");
+    }
+
+    if (
+        !client.reportOnLocalhost &&
+        isLocalhostAddress(window.location.hostname)
+    ) {
+        return;
+    }
+
+    const canonical = getCanonicalUrl();
+    const location = canonical ?? window.location;
+
+    if (location.host === "" && navigator.userAgent.indexOf("Electron") < 0) {
+        return;
+    }
+
+    const { hostname, path } = getHostnameAndPath(
+        location.pathname || "/",
+        true,
+    );
+
+    // NOTE: unlike pageviews, events skip the /cache check entirely so they
+    //       never advance the visitor/bounce hit counter
+    makeEventRequest(
+        client.reporterUrl,
+        buildEventRequestParams(client.siteId, hostname, path, opts),
+    );
 }

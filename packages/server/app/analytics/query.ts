@@ -156,6 +156,13 @@ function filtersToSql(filters: SearchFilters) {
 }
 
 /**
+ * Custom event rows share the dataset with pageviews; pageview queries must exclude them.
+ * (Rows written before custom events existed have an empty eventName column.)
+ */
+const PAGEVIEWS_ONLY_SQL = `AND ${ColumnMappings.eventName} = ''`;
+const EVENTS_ONLY_SQL = `AND ${ColumnMappings.eventName} != ''`;
+
+/**
  * NOTE: There are a bunch of "unsafe" SQL-like queries in here, in the sense that
  *       they are unparameterized raw SQL-like strings sent over HTTP. Cloudflare Analytics Engine
  *       does NOT support parameterized queries, nor is there an easy SQL-escaping
@@ -250,6 +257,7 @@ export class AnalyticsEngineAPI {
             WHERE timestamp >= toDateTime('${localStartTime.format("YYYY-MM-DD HH:mm:ss")}')
 								AND timestamp < toDateTime('${localEndTime.format("YYYY-MM-DD HH:mm:ss")}')
                 AND ${ColumnMappings.siteId} = '${siteId}'
+                ${PAGEVIEWS_ONLY_SQL}
                 ${filterStr}
             GROUP BY _bucket, isVisitor, isBounce
             ORDER BY _bucket ASC`;
@@ -356,6 +364,7 @@ export class AnalyticsEngineAPI {
             WHERE timestamp >= ${startIntervalSql} AND timestamp < ${endIntervalSql}
                 ${filterStr}
             AND ${siteIdColumn} = '${siteId}'
+            ${PAGEVIEWS_ONLY_SQL}
             GROUP BY isVisitor, isBounce
             ORDER BY isVisitor, isBounce ASC`;
 
@@ -420,6 +429,7 @@ export class AnalyticsEngineAPI {
             WHERE timestamp >= ${startIntervalSql} AND timestamp < ${endIntervalSql}
                 AND ${ColumnMappings.newVisitor} = 1
                 AND ${ColumnMappings.siteId} = '${siteId}'
+                ${PAGEVIEWS_ONLY_SQL}
                 ${filterStr}
             GROUP BY ${_column}
             ORDER BY count DESC
@@ -494,6 +504,7 @@ export class AnalyticsEngineAPI {
                 ${columnsStrWithAliases}
             FROM metricsDataset
             WHERE timestamp >= toDateTime('${startDateTimeSql}') AND timestamp < toDateTime('${endDateTimeSql}')
+                ${PAGEVIEWS_ONLY_SQL}
             GROUP BY timestamp,
                 ${ColumnMappings.siteId}, 
                 ${ColumnMappings.newVisitor}, 
@@ -588,6 +599,7 @@ export class AnalyticsEngineAPI {
             WHERE timestamp >= ${startIntervalSql} AND timestamp < ${endIntervalSql}
                 AND ${ColumnMappings.newVisitor} = 0
                 AND ${ColumnMappings.siteId} = '${siteId}'
+                ${PAGEVIEWS_ONLY_SQL}
                 ${filterStr}
             GROUP BY ${_column}, ${ColumnMappings.newVisitor}
             ORDER BY count DESC
@@ -879,6 +891,61 @@ export class AnalyticsEngineAPI {
         );
     }
 
+    /**
+     * Counts custom events grouped by a single event column (e.g. eventName, or
+     * eventLabel to find the most popular items for one event).
+     */
+    async getEventCountsByColumn(
+        siteId: string,
+        column: "eventName" | "eventCategory" | "eventLabel",
+        interval: string,
+        tz?: string,
+        filters: SearchFilters = {},
+        eventName?: string,
+        page: number = 1,
+        limit: number = 10,
+    ): Promise<[string, number][]> {
+        const { startIntervalSql, endIntervalSql } = intervalToSql(
+            interval,
+            tz,
+        );
+
+        let filterStr = filtersToSql(filters);
+        if (eventName) {
+            filterStr += ` AND ${ColumnMappings.eventName} = '${eventName}'`;
+        }
+
+        const _column = ColumnMappings[column];
+        const query = `
+            SELECT ${_column}, SUM(_sample_interval) as count
+            FROM metricsDataset
+            WHERE timestamp >= ${startIntervalSql} AND timestamp < ${endIntervalSql}
+                AND ${ColumnMappings.siteId} = '${siteId}'
+                ${EVENTS_ONLY_SQL}
+                ${filterStr}
+            GROUP BY ${_column}
+            ORDER BY count DESC
+            LIMIT ${limit * page}`;
+
+        type SelectionSet = {
+            count: number;
+        } & Record<typeof _column, string>;
+
+        const response = await this.query(query);
+        if (!response.ok) {
+            throw new Error(response.statusText);
+        }
+
+        const responseData =
+            (await response.json()) as AnalyticsQueryResult<SelectionSet>;
+
+        // since CF AE doesn't support OFFSET clauses, we select up to LIMIT and
+        // then slice that into the individual requested page
+        return responseData.data
+            .slice(limit * (page - 1), limit * page)
+            .map((row) => [row[_column], Number(row.count)]);
+    }
+
     async getSitesOrderedByHits(interval: string, limit?: number) {
         // defaults to 1 day if not specified
 
@@ -891,6 +958,7 @@ export class AnalyticsEngineAPI {
                 ${ColumnMappings.siteId} as siteId
             FROM metricsDataset
             WHERE timestamp >= ${startIntervalSql} AND timestamp < ${endIntervalSql}
+                ${PAGEVIEWS_ONLY_SQL}
             GROUP BY siteId
             ORDER BY count DESC
             LIMIT ${limit}
@@ -938,6 +1006,7 @@ export class AnalyticsEngineAPI {
                 ${ColumnMappings.bounce} as isBounce
             FROM metricsDataset
             WHERE ${ColumnMappings.siteId} = '${siteId}'
+                ${PAGEVIEWS_ONLY_SQL}
             GROUP by isBounce
         `;
 

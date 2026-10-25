@@ -1,7 +1,11 @@
 import { Client } from "./lib/client";
 import type { ClientOpts } from "./lib/client";
 
-import { trackPageview as _trackPageview } from "./lib/track";
+import {
+    trackPageview as _trackPageview,
+    trackEvent as _trackEvent,
+} from "./lib/track";
+import type { TrackEventOpts } from "./shared/types";
 import type { TrackPageviewOpts } from "./lib/track";
 
 const GLOBALS = {
@@ -31,6 +35,17 @@ export function trackPageview(opts?: TrackPageviewOpts) {
     }
     _trackPageview(GLOBALS.client, opts);
 }
+
+export function trackEvent(opts: TrackEventOpts) {
+    if (!GLOBALS.client) {
+        throw new Error(
+            "You must call Counterscale.initialize() before calling Counterscale.trackEvent().",
+        );
+    }
+    _trackEvent(GLOBALS.client, opts);
+}
+
+export type { TrackEventOpts };
 
 export function cleanup() {
     if (!GLOBALS.client) {

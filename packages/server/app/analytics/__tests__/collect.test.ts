@@ -134,6 +134,10 @@ describe("collectRequestHandler", () => {
                 "summer_sale", // utm_campaign
                 "running_shoes", // utm_term
                 "ad1", // utm_content
+                "", // event name (empty for pageviews)
+                "", // event category
+                "", // event label
+                "", // event data
             ],
             doubles: [
                 1, // new visitor
@@ -425,5 +429,101 @@ describe("collectRequestHandler", () => {
         expect(blobs[12]).toBe(""); // utm_campaign (empty)
         expect(blobs[13]).toBe(""); // utm_term (empty)
         expect(blobs[14]).toBe(""); // utm_content (empty)
+    });
+
+    describe("custom events", () => {
+        function makeEventRequest(
+            eventParams: Record<string, string>,
+            headers: Record<string, string> = {},
+        ) {
+            const request = generateRequestParams({
+                "user-agent":
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36",
+                ...headers,
+            });
+            request.url += "&" + new URLSearchParams(eventParams).toString();
+            return request;
+        }
+
+        function makeEnv() {
+            return {
+                WEB_COUNTER_AE: {
+                    writeDataPoint: vi.fn(),
+                } as AnalyticsEngineDataset,
+            } as Env;
+        }
+
+        test("writes event fields to blobs 16-19", () => {
+            const env = makeEnv();
+            const request = makeEventRequest({
+                en: "image_view",
+                ec: "gallery",
+                el: "/photos/sunset.jpg",
+                ed: JSON.stringify({ album: "iceland" }),
+            });
+
+            const response = collectRequestHandler(request as any, env, {
+                country: "US",
+            });
+
+            expect(response.status).toBe(200);
+            const datapoint = (env.WEB_COUNTER_AE.writeDataPoint as Mock).mock
+                .calls[0][0];
+            expect(datapoint.blobs).toHaveLength(19);
+            expect(datapoint.blobs[2]).toBe("/post/123"); // path still recorded
+            expect(datapoint.blobs[15]).toBe("image_view");
+            expect(datapoint.blobs[16]).toBe("gallery");
+            expect(datapoint.blobs[17]).toBe("/photos/sunset.jpg");
+            expect(datapoint.blobs[18]).toBe('{"album":"iceland"}');
+        });
+
+        test("never counts as a visit or bounce, and does not touch hit counter", () => {
+            const env = makeEnv();
+            // ht=1 and no if-modified-since would normally mean new visitor + bounce
+            const request = makeEventRequest({ en: "click", ht: "1" });
+
+            const response = collectRequestHandler(request as any, env, {
+                country: "US",
+            });
+
+            const datapoint = (env.WEB_COUNTER_AE.writeDataPoint as Mock).mock
+                .calls[0][0];
+            expect(datapoint.doubles).toEqual([0, 0, 0]);
+            expect(response.headers.get("Last-Modified")).toBeNull();
+        });
+
+        test("pageview rows leave event blobs empty", () => {
+            const env = makeEnv();
+            const request = generateRequestParams({});
+
+            collectRequestHandler(request as any, env, {});
+
+            const datapoint = (env.WEB_COUNTER_AE.writeDataPoint as Mock).mock
+                .calls[0][0];
+            expect(datapoint.blobs.slice(15)).toEqual(["", "", "", ""]);
+        });
+
+        test.each([
+            [{ en: "" }, "Invalid event name"],
+            [{ en: "bad'name" }, "Invalid event name"],
+            [{ en: "x".repeat(65) }, "Invalid event name"],
+            [{ en: "ok", ec: "bad category" }, "Invalid event category"],
+            [{ en: "ok", el: "it's" }, "Invalid event label"],
+            [{ en: "ok", el: "x".repeat(257) }, "Invalid event label"],
+            [{ en: "ok", ed: "{not json" }, "Invalid event data"],
+            [
+                { en: "ok", ed: JSON.stringify({ x: "a".repeat(1100) }) },
+                "Event data too large",
+            ],
+        ])("rejects invalid event params %o", async (params, message) => {
+            const env = makeEnv();
+            const request = makeEventRequest(params);
+
+            const response = collectRequestHandler(request as any, env, {});
+
+            expect(response.status).toBe(400);
+            expect(await response.text()).toBe(message);
+            expect(env.WEB_COUNTER_AE.writeDataPoint).not.toHaveBeenCalled();
+        });
     });
 });

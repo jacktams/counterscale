@@ -197,6 +197,51 @@ Counterscale.init({
 Counterscale.trackPageview();
 ```
 
+### Custom Events
+
+Custom events (clicks, image views, downloads, etc.) are recorded separately from pageviews. They never count as a visit, pageview or bounce. The dashboard's **Events** card lists events by count; click an event to see its most popular items (labels).
+
+Each event has a `name` (required), and optionally:
+
+- `label`: the item interacted with (e.g. an image path or product slug). This is what "most popular items" are grouped by.
+- `category`: a grouping such as `gallery` or `navigation`.
+- `data`: arbitrary JSON, stored but not shown in the dashboard (max 1KB).
+
+Names and categories may only contain `A-Z a-z 0-9 _ . : -` (max 64 chars). Labels may be up to 256 characters with no quotes or backslashes.
+
+#### Declaratively (script loader)
+
+When using the script loader, add data attributes to elements:
+
+```html
+<!-- tracks a click -->
+<a href="https://github.com/me" data-counterscale-event="outbound_click" data-counterscale-label="github">GitHub</a>
+
+<!-- tracks the image scrolling into view (once per page load); label defaults to the image's src path -->
+<img src="/photos/sunset.jpg" data-counterscale-view="image_view" data-counterscale-category="gallery" />
+```
+
+Elements added to the page later (e.g. by a lightbox or infinite scroll) are picked up automatically.
+
+#### Programmatically
+
+```js
+// script loader: available once the tracker has loaded
+window.counterscale.trackEvent({ name: "lightbox_open", label: "sunset", data: { album: "iceland" } });
+
+// or queue it before the (deferred) script has loaded
+window.counterscale = window.counterscale || { q: [] };
+window.counterscale.q.push(["trackEvent", { name: "signup" }]);
+```
+
+```typescript
+// package/module
+import * as Counterscale from "@counterscale/tracker";
+
+Counterscale.init({ siteId: "...", reporterUrl: "...", autoTrackEvents: true }); // autoTrackEvents enables the data attributes above
+Counterscale.trackEvent({ name: "image_view", label: "/photos/sunset.jpg" });
+```
+
 ### Custom Domains
 
 The deployment URL can always be changed to go behind a custom domain you own. [More here](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/).

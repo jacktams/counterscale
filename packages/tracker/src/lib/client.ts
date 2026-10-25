@@ -1,8 +1,11 @@
-import { autoTrackPageviews } from "./track";
+import { autoTrackPageviews, trackEvent } from "./track";
+import { autoTrackEvents } from "./autoEvents";
 import type { BaseClientConfig } from "../shared/types";
 
 export type ClientOpts = BaseClientConfig & {
     autoTrackPageviews?: boolean;
+    // track clicks/views declared via data-counterscale-* attributes
+    autoTrackEvents?: boolean;
 };
 
 export class Client {
@@ -11,6 +14,7 @@ export class Client {
     reportOnLocalhost = false;
 
     _cleanupAutoTrackPageviews?: () => void;
+    _cleanupAutoTrackEvents?: () => void;
 
     constructor(opts: ClientOpts) {
         this.siteId = opts.siteId;
@@ -28,11 +32,20 @@ export class Client {
                 this._cleanupAutoTrackPageviews = autoTrackPageviews(this);
             }, 0);
         }
+
+        if (opts.autoTrackEvents) {
+            this._cleanupAutoTrackEvents = autoTrackEvents((event) =>
+                trackEvent(this, event),
+            );
+        }
     }
 
     cleanup() {
         if (this._cleanupAutoTrackPageviews) {
             this._cleanupAutoTrackPageviews();
+        }
+        if (this._cleanupAutoTrackEvents) {
+            this._cleanupAutoTrackEvents();
         }
     }
 }
