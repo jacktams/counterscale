@@ -3,12 +3,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
     init: vi.fn(),
     trackEvent: vi.fn(),
+    trackPageview: vi.fn(),
 }));
 
 vi.mock("../index", () => ({
     init: mocks.init,
     trackEvent: mocks.trackEvent,
-    trackPageview: vi.fn(),
+    trackPageview: mocks.trackPageview,
     cleanup: vi.fn(),
 }));
 
@@ -17,6 +18,7 @@ describe("tracker loader", () => {
         document.body.innerHTML = "";
         mocks.init.mockReset();
         mocks.trackEvent.mockReset();
+        mocks.trackPageview.mockReset();
         // @ts-expect-error resetting global between tests
         delete window.counterscale;
         vi.resetModules();
@@ -85,11 +87,34 @@ describe("tracker loader", () => {
         };
 
         await import("../tracker");
-
-        expect(mocks.trackEvent).toHaveBeenCalledWith({ name: "early" });
+        await vi.waitFor(() =>
+            expect(mocks.trackEvent).toHaveBeenCalledWith({ name: "early" }),
+        );
 
         window.counterscale.q!.push(["trackEvent", { name: "late" }]);
         expect(mocks.trackEvent).toHaveBeenCalledWith({ name: "late" });
         expect(mocks.trackEvent).toHaveBeenCalledTimes(2);
+    });
+
+    test("replays queued trackPageview commands that carry a url, but not bare ones", async () => {
+        document.body.innerHTML = `<script id="counterscale-script" data-site-id="test-site" src="https://example.com/tracker.js"></script>`;
+        // @ts-expect-error partial stub, as a site would define before the script loads
+        window.counterscale = {
+            q: [
+                ["trackPageview"], // legacy form: landing pageview is auto-tracked
+                ["trackPageview", { url: "/photos/sunset" }],
+            ],
+        };
+
+        await import("../tracker");
+        await vi.waitFor(() => expect(mocks.trackPageview).toHaveBeenCalled());
+
+        expect(mocks.trackPageview).toHaveBeenCalledOnce();
+        expect(mocks.trackPageview).toHaveBeenCalledWith({
+            url: "/photos/sunset",
+        });
+
+        window.counterscale.q!.push(["trackPageview", { url: "/later" }]);
+        expect(mocks.trackPageview).toHaveBeenLastCalledWith({ url: "/later" });
     });
 });

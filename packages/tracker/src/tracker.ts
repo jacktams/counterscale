@@ -67,6 +67,12 @@ function init() {
  *
  *   window.counterscale = window.counterscale || { q: [] };
  *   window.counterscale.q.push(["trackEvent", { name: "signup" }]);
+ *   window.counterscale.q.push(["trackPageview", { url: "/photos/sunset" }]);
+ *
+ * A queued trackPageview is only replayed when it has options (e.g. an explicit
+ * url, for a virtual pageview such as a lightbox deeplink). A bare
+ * ["trackPageview"] is the legacy form and is ignored, since the landing
+ * pageview is already auto-tracked and replaying it would double count.
  */
 function exposeGlobalApi() {
     type Command = [string, ...unknown[]];
@@ -78,7 +84,12 @@ function exposeGlobalApi() {
                 cmd[1] as Parameters<typeof Counterscale.trackEvent>[0],
             );
         }
-        // "set" and "trackPageview" are handled at init (pageviews are auto-tracked)
+        if (cmd[0] === "trackPageview" && cmd[1]) {
+            Counterscale.trackPageview(
+                cmd[1] as Parameters<typeof Counterscale.trackPageview>[0],
+            );
+        }
+        // "set" is handled at init, and bare "trackPageview" is auto-tracked
     };
 
     const pending = window.counterscale && window.counterscale.q;
@@ -100,7 +111,9 @@ function exposeGlobalApi() {
         cleanup: Counterscale.cleanup,
     };
 
-    queue.forEach(runCommand);
+    // Replay on the next tick: init() scheduled the landing pageview on a
+    // setTimeout(0), so queued virtual pageviews are sent after it, not before.
+    setTimeout(() => queue.forEach(runCommand), 0);
 }
 
 (function () {
