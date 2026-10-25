@@ -250,11 +250,20 @@ export default function Dashboard() {
                         timezone={userTimezone}
                     />
                 </div>
-                <div className="w-full mb-4">
-                    <TimeSeriesCard
+                <div className="grid md:grid-cols-3 gap-4 mb-4">
+                    <div className="md:col-span-2">
+                        <TimeSeriesCard
+                            siteId={data.siteId}
+                            interval={data.interval}
+                            filters={data.filters}
+                            timezone={userTimezone}
+                        />
+                    </div>
+                    <ReferrerCard
                         siteId={data.siteId}
                         interval={data.interval}
                         filters={data.filters}
+                        onFilterChange={handleFilterChange}
                         timezone={userTimezone}
                     />
                 </div>
@@ -266,11 +275,10 @@ export default function Dashboard() {
                         onFilterChange={handleFilterChange}
                         timezone={userTimezone}
                     />
-                    <ReferrerCard
+                    <EventsCard
                         siteId={data.siteId}
                         interval={data.interval}
                         filters={data.filters}
-                        onFilterChange={handleFilterChange}
                         timezone={userTimezone}
                     />
                 </div>
@@ -348,14 +356,6 @@ export default function Dashboard() {
                         interval={data.interval}
                         filters={data.filters}
                         onFilterChange={handleFilterChange}
-                        timezone={userTimezone}
-                    />
-                </div>
-                <div className="grid md:grid-cols-2 gap-4 mb-4">
-                    <EventsCard
-                        siteId={data.siteId}
-                        interval={data.interval}
-                        filters={data.filters}
                         timezone={userTimezone}
                     />
                 </div>
